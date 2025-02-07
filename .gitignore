@@ -1,0 +1,8 @@
+# 忽略所有数据文件
+*.csv
+*.xlsx
+*.db
+*.json
+
+# 忽略archive文件夹
+archive/
