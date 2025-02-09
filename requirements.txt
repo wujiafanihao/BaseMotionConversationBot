@@ -9,3 +9,5 @@ langchain-community == 0.3.12
 requests == 2.32.3
 langchain-ollama == 0.2.3
 ollama == 0.4.7
+chromadb
+numpy == 1.26.4

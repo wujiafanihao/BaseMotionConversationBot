@@ -28,7 +28,6 @@ class LLMInterface(ABC):
         """
         pass
 
-
 # OpenAIAdapter 实现 LLMInterface
 class OpenAIAdapter(LLMInterface):
     _template = """
