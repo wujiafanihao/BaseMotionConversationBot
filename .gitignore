@@ -3,6 +3,7 @@
 *.xlsx
 *.db
 *.json
+config.yaml
 
 # 忽略archive文件夹
 archive/

@@ -1,10 +1,11 @@
-opencv-python
-tqdm
-langchain
-langchain-google-genai
-pillow
-openai
-langchain-openai
-langchain-community
-requests
-langchain-ollama
+opencv-python == 4.11.0.86
+tqdm == 4.67.1
+langchain == 0.3.12
+langchain-google-genai == 0.2.12
+pillow == 11.0.0
+openai == 1.57.4
+langchain-openai == 0.2.12
+langchain-community == 0.3.12
+requests == 2.32.3
+langchain-ollama == 0.2.3
+ollama == 0.4.7
