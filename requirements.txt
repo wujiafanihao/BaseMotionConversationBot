@@ -1,2 +1,10 @@
 opencv-python
 tqdm
+langchain
+langchain-google-genai
+pillow
+openai
+langchain-openai
+langchain-community
+requests
+langchain-ollama
