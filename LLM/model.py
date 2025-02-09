@@ -3,6 +3,8 @@ from typing import Any
 import yaml
 from langchain_openai import ChatOpenAI
 from langchain_ollama.chat_models import ChatOllama
+from langchain_community.embeddings import OllamaEmbeddings
+from memory_manager import debug_print, EnhancedMemoryManager
 import asyncio
 
 # 定义 LLMInterface 接口
@@ -12,26 +14,16 @@ class LLMInterface(ABC):
 
     @abstractmethod
     def model(self) -> Any:
-        """
-        根据用户配置初始化模型
-        :return: 初始化后的模型
-        """
         pass
 
     @abstractmethod
     def generate(self, message: str, emotion: str) -> str:
-        """
-        根据输入的提示生成文本，同时利用记忆生成上下文。
-        :param message: 用户输入的提示字符串
-        :param emotion: 用户当前的情绪
-        :return: 生成的文本字符串
-        """
         pass
 
 # OpenAIAdapter 实现 LLMInterface
 class OpenAIAdapter(LLMInterface):
     _template = """
-    【对话上下文】:
+    【对话上下文（最近优先）】:
     {chat_history}
     【用户信息】:
     情绪: {emotion}
@@ -53,7 +45,22 @@ class OpenAIAdapter(LLMInterface):
         self.api_key = api_key or config.get("api_key")
         self.base_url = base_url or config.get("base_url")
         self.model_name = config.get("model", "gpt-4o-mini")
-        self.model_instance = self.model()  # 初始化模型实例
+        try:
+            # 初始化嵌入模型和记忆系统
+            self.embedder = OllamaEmbeddings(model="bge-large:latest")
+            debug_print("Ollama初始化", "BGE嵌入模型加载成功")
+            self.memory = EnhancedMemoryManager(self.embedder)
+            self.model_instance = self.model()
+        except Exception as e:
+            raise RuntimeError(f"初始化失败: {str(e)}") # 初始化失败
+
+    def __del__(self):
+        try:
+            if hasattr(self, 'client'):
+                self.client.close()
+                debug_print("资源清理", "已关闭数据库连接")
+        except Exception as e:
+            print(f"清理资源时出错: {str(e)}")
 
     @staticmethod
     def load_config(config_file="config.yaml"):
@@ -65,38 +72,56 @@ class OpenAIAdapter(LLMInterface):
             raise ValueError(f"Failed to load config file: {e}")
 
     def model(self) -> Any:
-        return ChatOpenAI(api_key=self.api_key, base_url=self.base_url, model=self.model_name)
+        try:
+            return ChatOpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+                model=self.model_name
+            )
+        except Exception as e:
+            raise RuntimeError(f"模型初始化失败: {str(e)}")
+
 
     def generate(self, message: str, emotion: str) -> str:
-        # 将用户消息添加到记忆中
-        self.memory.append({"role": "user", "content": message})
-
-        # 构建包含记忆的上下文
-        chat_history = "\n".join(
-            [f"{msg['role']}: {msg['content']}" for msg in self.memory]
-        )
-
-        # 获取 ReasonerAdapter 的思考过程
-        think = ReasonerAdapter().generate(message, emotion)
-
-        # 使用 format 方法生成最终的提示
-        prompt = self._template.format(
-            chat_history=chat_history,
-            emotion=emotion,
-            query=message,
-            thought_process=think
-        )
-
-        # 调用实际的 OpenAI 模型
         try:
-            response = self.model_instance.invoke(prompt).content
+            # 存储用户消息
+            self.memory.store_memory("user", message, {"emotion": emotion})
+            
+            # 检索相关记忆
+            related_memories = self.memory.contextual_retrieval(message)
+            
+            # 构建包含记忆的上下文
+            chat_history = "\n".join(
+                    [f"{m['metadata']['role']}: {m['content']}" 
+                    for m in related_memories]
+            )
+
+            # 获取 ReasonerAdapter 的思考过程
+            think = ReasonerAdapter().generate(message, emotion)
+
+            # 使用 format 方法生成最终的提示
+            prompt = self._template.format(
+                chat_history=chat_history,
+                emotion=emotion,
+                query=message,
+                thought_process=think
+            )
+
+            debug_print("完整提示词", prompt)
+
+            # 调用实际的 OpenAI 模型
+            try:
+                response = self.model_instance.invoke(prompt).content
+            except Exception as e:
+                raise RuntimeError(f"Model invocation failed: {e}")
+
+            # 存储AI回复
+            self.memory.store_memory("assistant", response)
+            return response
         except Exception as e:
-            raise RuntimeError(f"Model invocation failed: {e}")
-
-        # 将模型响应添加到记忆中
-        self.memory.append({"role": "assistant", "content": response})
-        return response
-
+                print(f"生成失败: {str(e)}")
+                return "抱歉，我遇到了一些问题，请稍后再试。"
+        
     async def agenerate(self, message: str, emotion: str) -> str:
         """异步生成回复的方法，支持流式传输并实时打印输出，最终返回完整响应。"""
         # 将用户消息添加到记忆中
@@ -212,13 +237,13 @@ if __name__ == "__main__":
     try:
         openai_model = OpenAIAdapter()
         reasoner_model = ReasonerAdapter()
-        # while True:
-        #     # 用户提问
-        #     user_message = input("你：")
-        #     user_emotion = input("你当前情绪：")
-        #     # 基于 ReasonerAdapter 的思考过程生成最终回复
-        #     response = openai_model.generate(user_message, user_emotion)
-        #     print("AI：", response)
-        asyncio.run(main())
+        while True:
+            # 用户提问
+            user_message = input("你：")
+            user_emotion = input("你当前情绪：")
+            # 基于 ReasonerAdapter 的思考过程生成最终回复
+            response = openai_model.generate(user_message, user_emotion)
+            print("AI：", response)
+        # asyncio.run(main())
     except Exception as e:
         print(f"Error: {e}")
