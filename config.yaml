@@ -1,12 +1,12 @@
 openai:
-  api_key: "sk-nsgaITlzpL32xiKcYLq1UY9SXUTzwMgAfxob0REwdCAzv9lY"
-  base_url: "https://api.chatanywhere.tech"
+  api_key: "your key"
+  base_url: ""
   model: "gpt-4o-mini"
 
 gemini:
   model: "gemini-1.5-flash"
-  base_url: "https://gemini.wujiafa.us.kg/v1"
-  api_key: "AIzaSyAsmG9yGsqS08hUmpGoGzM2AH-gmdk05p8"
+  base_url: ""
+  api_key: "your key"
 
 deepseek:
   model: "deepseek-r1:8b"
