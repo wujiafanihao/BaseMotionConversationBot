@@ -24,7 +24,33 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="torch.nn.functional")
 import cv2
 from datetime import datetime
-from early_stopping import EarlyStopping
+
+class EarlyStopping:
+    """早停机制
+    
+    当验证集损失在指定的耐心值内没有改善时，提前停止训练
+    
+    Args:
+        patience (int): 等待改善的轮数
+        min_delta (float): 最小改善阈值
+    """
+    def __init__(self, patience=7, min_delta=0.001):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
+        
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0 
 
 # ----------------------
 # 2. 基础配置
