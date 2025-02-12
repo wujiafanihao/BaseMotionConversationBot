@@ -1,3 +1,5 @@
+selected_adapter: openai  # 修改为 'openai' 则启用 openai 模型配置
+
 openai:
   api_key: "sk-nsgaITlzpL32xiKcYLq1UY9SXUTzwMgAfxob0REwdCAzv9lY"
   base_url: "https://api.chatanywhere.tech"

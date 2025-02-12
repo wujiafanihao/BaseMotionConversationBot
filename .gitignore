@@ -4,7 +4,10 @@
 *.db
 *.json
 config.yaml
+git操作.md
 
 # 忽略archive文件夹
 archive/
 memory/
+visionModel/
+hub/

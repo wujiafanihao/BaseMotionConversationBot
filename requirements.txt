@@ -1,7 +1,7 @@
-opencv-python == 4.11.0.86
+opencv-python == 4.8.1.78
 tqdm == 4.67.1
 langchain == 0.3.12
-langchain-google-genai == 0.2.12
+langchain-google-genai == 2.0.9
 pillow == 11.0.0
 openai == 1.57.4
 langchain-openai == 0.2.12
@@ -11,3 +11,4 @@ langchain-ollama == 0.2.3
 ollama == 0.4.7
 chromadb
 numpy == 1.26.4
+albumentations == 2.0.3

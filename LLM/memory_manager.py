@@ -8,6 +8,7 @@ from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_ollama.embeddings import OllamaEmbeddings
 import os
+from chromadb.errors import NotFoundError
 
 # 配置日志打印
 def debug_print(title, content):
@@ -28,11 +29,13 @@ class MemoryManager:
             try:
                 self.collection = self.client.get_collection("chat_history")
                 debug_print("集合加载", "成功加载现有对话历史集合")
-            except chromadb.exceptions.NotFoundError:
-                self.collection = self.client.create_collection("chat_history")
-                debug_print("集合创建", "新建对话历史集合")
             except Exception as e:
-                raise RuntimeError(f"集合操作异常: {str(e)}")
+                # 如果错误信息中包含"does not exist"，则尝试创建新集合
+                if "does not exist" in str(e):
+                    self.collection = self.client.create_collection("chat_history")
+                    debug_print("集合创建", "新建对话历史集合")
+                else:
+                    raise RuntimeError(f"集合操作异常: {str(e)}")
 
         except Exception as e:
             raise RuntimeError(f"无法初始化数据库: {str(e)}")
