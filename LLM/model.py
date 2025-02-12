@@ -21,7 +21,7 @@ class LLMInterface(ABC):
         pass
 
 # OpenAIAdapter 实现 LLMInterface
-class OpenAIAdapter(LLMInterface):
+class ModelAdapter(LLMInterface):
     _template = """
     【对话上下文（最近优先）】:
     {chat_history}
@@ -262,44 +262,23 @@ class ReasonerAdapter(LLMInterface):
         return think_content
 
 async def main():
-    openai_model = OpenAIAdapter()
-    response = await openai_model.agenerate("你好", "高兴")
+    model = ModelAdapter()
+    response = await model.agenerate("你好", "高兴")
     print("AI：", response)
-    response = await openai_model.agenerate("我刚刚问了什么", "高兴")
+    response = await model.agenerate("我刚刚问了什么", "高兴")
     print("AI：", response)
 
 if __name__ == "__main__":
     try:
-        # 示例：如果需要使用工厂函数，根据配置快速创建主对话模型适配器
-        # adapter = create_adapter()
-        openai_model = OpenAIAdapter()
+        model = ModelAdapter()
         reasoner_model = ReasonerAdapter()
         while True:
             # 用户提问
             user_message = input("你：")
             user_emotion = input("你当前情绪：")
             # 基于 ReasonerAdapter 的思考过程生成最终回复
-            response = openai_model.generate(user_message, user_emotion)
+            response = model.generate(user_message, user_emotion)
             print("AI：", response)
         # asyncio.run(main())
     except Exception as e:
         print(f"Error: {e}")
-
-# 新增工厂函数，根据配置文件自动选择主对话模型适配器
-def create_adapter():
-    """
-    根据 config.yaml 中的 selected_adapter 配置初始化主对话模型适配器。
-    可选值: 'openai' 或 'gemini'，默认 'gemini'。
-    若需要支持更多模型，可在此处扩展逻辑。
-    """
-    try:
-        with open("config.yaml", "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-        selected_adapter = config.get("selected_adapter", "gemini").lower()
-        if selected_adapter in ("openai", "gemini"):
-            # 使用 OpenAIAdapter，通过 load_config 会自动加载对应的配置
-            return OpenAIAdapter()
-        else:
-            raise ValueError(f"未支持的主对话模型: {selected_adapter}")
-    except Exception as e:
-        raise RuntimeError(f"根据配置初始化模型失败: {e}")

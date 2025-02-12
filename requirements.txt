@@ -12,3 +12,12 @@ ollama == 0.4.7
 chromadb
 numpy == 1.26.4
 albumentations == 2.0.3
+modelscope == 1.22.3
+python-dotenv == 1.0.1
+pyaudio == 0.2.14
+addict == 2.4.0
+datasets == 3.2.0
+simplejson == 3.19.3
+SoundFile == 0.13.1
+wave == 0.0.2
+keyboard == 0.13.5
