@@ -21,3 +21,4 @@ simplejson == 3.19.3
 SoundFile == 0.13.1
 wave == 0.0.2
 keyboard == 0.13.5
+funasr
