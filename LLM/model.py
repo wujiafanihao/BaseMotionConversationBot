@@ -3,7 +3,7 @@ from typing import Any
 import yaml
 from langchain_openai import ChatOpenAI
 from langchain_ollama.chat_models import ChatOllama
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama.embeddings import OllamaEmbeddings
 from .memory_manager import debug_print, EnhancedMemoryManager
 import asyncio
 
@@ -53,90 +53,132 @@ class ModelAdapter(LLMInterface):
         config = self.load_config()  
         self.api_key = api_key or config.get("api_key")
         self.base_url = base_url or config.get("base_url")
-        self.model_name = config.get("model", "gpt-4o-mini")
+        self.model_name = config.get("model", "gemini-2.0-pro-exp-02-05")
+        self.provider = config.get("selected_adapter", "gemini")  # 添加 provider 属性
+        debug_print("配置信息", f"Provider: {self.provider}, Model: {self.model_name}, API Key: {self.api_key[:8]}...")
         try:
+            # 初始化模型实例
+            self.model_instance = self.model()
+            debug_print("模型初始化", "模型实例创建成功")
+            
             # 初始化嵌入模型和记忆系统
-            self.embedder = OllamaEmbeddings(model="bge-large:latest")
+            self.embedder = OllamaEmbeddings(
+                model="bge-large:latest",
+            )
             debug_print("Ollama初始化", "BGE嵌入模型加载成功")
             self.memory = EnhancedMemoryManager(self.embedder)
-            self.model_instance = self.model()
-            # 初始化 ReasonerAdapter 后进行复用，避免重复耗时的初始化
+            
+            # 初始化 ReasonerAdapter
             self.reasoner = ReasonerAdapter()
+            debug_print("初始化完成", "所有组件加载成功")
         except Exception as e:
-            raise RuntimeError(f"初始化失败: {str(e)}") # 初始化失败
-
-    def __del__(self):
-        """析构函数，确保资源被正确释放"""
+            debug_print("初始化错误", f"错误详情: {str(e)}")
+            raise RuntimeError(f"初始化失败: {str(e)}")
+    def model(self) -> Any:
         try:
-            if hasattr(self, 'client'):
-                self.client.close()
-            if hasattr(self, 'model_instance'):
-                del self.model_instance
-            if hasattr(self, 'embedder'):
-                del self.embedder
-            if hasattr(self, 'memory'):
-                del self.memory
-            if hasattr(self, 'reasoner'):
-                del self.reasoner
-            debug_print("资源清理", "已释放所有资源")
+            if self.provider.lower() == "openai":
+                return ChatOpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                    model=self.model_name
+                )
+            elif self.provider.lower() == "gemini":
+                return ChatOpenAI(
+                    model=self.model_name,
+                    base_url=self.base_url,
+                    api_key=self.api_key,
+                    temperature=0.7
+                )
+            else:
+                raise ValueError(f"不支持的模型提供商: {self.provider}")
         except Exception as e:
-            print(f"清理资源时出错: {str(e)}")
-
-    def release_resources(self):
-        """主动释放资源的方法"""
-        try:
-            if hasattr(self, 'model_instance'):
-                del self.model_instance
-            if hasattr(self, 'embedder'):
-                del self.embedder
-            if hasattr(self, 'memory'):
-                del self.memory
-            if hasattr(self, 'reasoner'):
-                del self.reasoner
-            debug_print("资源释放", "已主动释放模型资源")
-        except Exception as e:
-            print(f"释放资源时出错: {str(e)}")
-
-    @staticmethod
-    def load_config(config_file="config.yaml", model_key=None):
+            debug_print("模型初始化错误", f"错误详情: {str(e)}")
+            raise RuntimeError(f"模型初始化失败: {str(e)}")
+    def update_config(self, provider: str, model_name: str, thinking_model: str) -> None:
+        """更新模型配置并重新初始化模型
+        Args:
+            provider: 模型提供商 ("OpenAI" 或 "Gemini")
+            model_name: 选择的模型名称
+            thinking_model: 思考模型名称
         """
-        动态加载配置文件，根据传入的 model_key 或配置文件中的 selected_adapter，
-        默认 selected_adapter 为 'gemini'，用于决定使用哪个模型配置。
+        try:
+            # 更新配置文件
+            with open("config.yaml", 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+            
+            # 更新选定的适配器
+            config['selected_adapter'] = provider.lower()
+            
+            # 更新对应提供商的配置
+            provider_config = config.get(provider.lower(), {})
+            provider_config['model'] = model_name
+            config[provider.lower()] = provider_config
+            
+            # 更新思考模型配置
+            deepseek_config = config.get('deepseek', {})
+            deepseek_config['model'] = thinking_model
+            config['deepseek'] = deepseek_config
+            
+            # 保存更新后的配置
+            with open("config.yaml", 'w', encoding='utf-8') as f:
+                yaml.safe_dump(config, f, allow_unicode=True)
+            
+            # 更新当前实例的配置
+            self.provider = provider.lower()
+            self.model_name = model_name
+            
+            # 重新初始化模型实例
+            self.model_instance = self.model()
+            
+            # 重新初始化思考模型
+            if hasattr(self, 'reasoner'):
+                self.reasoner = ReasonerAdapter()
+                
+            debug_print("配置更新", f"已更新为 {provider} 的 {model_name} 模型")
+                
+        except Exception as e:
+            raise RuntimeError(f"更新配置失败: {str(e)}")
+
+    @classmethod
+    def load_config(cls, config_file="config.yaml"):
+        """加载聊天模型配置
+        Returns:
+            dict: 当前选定适配器的配置
         """
         try:
             with open(config_file, 'r', encoding="utf-8") as f:
                 config = yaml.safe_load(f)
-            if model_key is None:
-                # 从全局配置中读取 selected_adapter 字段
-                model_key = config.get("selected_adapter", "gemini")
-            return config.get(model_key, {})
+            
+            # 获取当前选定的适配器
+            selected_adapter = config.get("selected_adapter", "gemini")
+            
+            # 获取对应适配器的配置
+            if selected_adapter == "gemini":
+                adapter_config = config.get("gemini", {})
+            elif selected_adapter == "openai":
+                adapter_config = config.get("openai", {})
+            else:
+                raise ValueError(f"不支持的适配器类型: {selected_adapter}")
+            
+            # 添加 selected_adapter 到配置中
+            adapter_config["selected_adapter"] = selected_adapter
+            
+            debug_print("配置加载", f"已加载 {selected_adapter} 配置")
+            return adapter_config
+            
         except Exception as e:
             raise ValueError(f"Failed to load config file: {e}")
 
-    def model(self) -> Any:
-        try:
-            return ChatOpenAI(
-                api_key=self.api_key,
-                base_url=self.base_url,
-                model=self.model_name
-            )
-        except Exception as e:
-            raise RuntimeError(f"模型初始化失败: {str(e)}")
-
-
     def generate(self, message: str, emotion: str) -> str:
         try:
-            # 检索相关记忆
-            related_memories = self.memory.contextual_retrieval(message)
+            # 获取已有 ReasonerAdapter 的思考过程和历史记录
+            think, chat_memories = self.reasoner.generate(message, emotion)
             
-            # 构建包含记忆的上下文
+            # 直接使用 ReasonerAdapter 检索到的历史记录
             chat_history = "\n".join(
                 [f"{m['metadata']['role']}: {m['content']}" 
-                for m in related_memories]
+                for m in chat_memories]
             )
-
-            # 获取已有 ReasonerAdapter 的思考过程
-            think = self.reasoner.generate(message, emotion)
 
             # 使用 format 方法生成最终的提示
             prompt = self._template.format(
@@ -236,24 +278,40 @@ class ReasonerAdapter(LLMInterface):
             debug_print("ReasonerAdapter内存初始化", f"初始化失败: {str(e)}")
             self.memory = None
 
-    @staticmethod
-    def load_config(config_file="config.yaml", model_key=None):
-        """
-        加载链式思考模型的配置，默认使用 'deepseek' 部分。
+    @classmethod
+    def load_config(cls, config_file="config.yaml"):
+        """加载思考模型配置
+        Returns:
+            dict: deepseek 配置
         """
         try:
             with open(config_file, 'r', encoding="utf-8") as f:
                 config = yaml.safe_load(f)
-            if model_key is None:
-                model_key = "deepseek"
-            return config.get(model_key, {})
+            
+            # 获取 deepseek 配置
+            deepseek_config = config.get("deepseek", {})
+            
+            # 设置默认值
+            if not deepseek_config:
+                deepseek_config = {
+                    "base_url": "http://127.0.0.1:11434",
+                    "model": "deepseek-r1:8b"
+                }
+            
+            return deepseek_config
         except Exception as e:
             raise ValueError(f"Failed to load config file: {e}")
-
     def model(self) -> Any:
         return ChatOllama(model=self.model_name, temperature=0.7, base_url=self.base_url)
 
-    def generate(self, message: str, emotion: str) -> str:
+    def generate(self, message: str, emotion: str) -> tuple:
+        """生成思考过程和检索历史
+        Args:
+            message: 用户消息
+            emotion: 情绪标签
+        Returns:
+            tuple: (思考过程, 聊天历史列表)
+        """
         # 检索向量数据库中的历史对话记录
         chat_memories = []
         if hasattr(self, "memory") and self.memory is not None:
@@ -294,28 +352,8 @@ class ReasonerAdapter(LLMInterface):
             # 拼接最终的思考内容
             think_content = ''.join(accumulated).strip()
             print("\n</think>\n", flush=True)
+            
+            # 返回思考内容和检索到的历史记录
+            return think_content, chat_memories
         except Exception as e:
             raise RuntimeError(f"Model invocation failed: {e}")
-        return think_content
-
-# async def main():
-#     model = ModelAdapter()
-#     response = await model.agenerate("你好", "高兴")
-#     print("AI：", response)
-#     response = await model.agenerate("我刚刚问了什么", "高兴")
-#     print("AI：", response)
-
-# if __name__ == "__main__":
-#     try:
-#         model = ModelAdapter()
-#         reasoner_model = ReasonerAdapter()
-#         while True:
-#             # 用户提问
-#             user_message = input("你：")
-#             user_emotion = input("你当前情绪：")
-#             # 基于 ReasonerAdapter 的思考过程生成最终回复
-#             response = model.generate(user_message, user_emotion)
-#             print("AI：", response)
-#         # asyncio.run(main())
-#     except Exception as e:
-#         print(f"Error: {e}")

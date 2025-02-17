@@ -49,6 +49,19 @@ class EmotionalChatApp:
             "Contempt"  # 7
         ]
     
+    def save_llm_config(self, provider, model_name, thinking_model):
+        """保存LLM配置"""
+        try:
+            # 更新LLM配置
+            self.llm.update_config(
+                provider=provider,
+                model_name=model_name,
+                thinking_model=thinking_model
+            )
+            return "LLM模型已更新！"
+        except Exception as e:
+            return f"更新LLM模型失败: {str(e)}"
+    
     def save_config(self, tts_model, use_fp16):
         """保存TTS配置"""
         try:
@@ -186,9 +199,17 @@ class EmotionalChatApp:
                             # 摄像头画布（初始隐藏）
                             camera_group = gr.Group(visible=False)
                             with camera_group:
-                                camera = gr.Image(source="webcam", streaming=True, label="摄像头画面")
+                                camera = gr.Image(source="webcam", streaming=True, label="摄像头画面", visible=False)
                                 emotion_label = gr.Textbox(label="检测到的情绪", interactive=False)
+                                with gr.Row():
+                                    camera_btn = gr.Button("启动摄像头")
+                                    camera_stop_btn = gr.Button("关闭摄像头")
                             
+                            # 添加摄像头启动事件
+                            def toggle_camera():
+                                return gr.Image(visible=True)
+                            
+                            camera_btn.click(toggle_camera, outputs=[camera])
                             # 模式选择按钮
                             with gr.Row():
                                 text_btn = gr.Button("文本对话", variant="primary")
@@ -348,12 +369,101 @@ class EmotionalChatApp:
                         outputs=[audio_output],
                         every=1.0  # 每秒检查一次
                     )
-                
+                    
+                    # 关闭摄像头的事件处理函数
+                    def stop_camera():
+                        """关闭摄像头并清空画面"""
+                        return gr.Image(visible=False), gr.Textbox(value="")
+                    
+                    # 绑定关闭事件
+                    camera_stop_btn.click(
+                        stop_camera,
+                        outputs=[camera, emotion_label]
+                    )
                 # 设置页面
                 with gr.Tab("设置"):
                     with gr.Column():
-                        gr.Markdown("## LLM 模型设置（开发中）")
-                        gr.Markdown("LLM模型设置功能正在开发中...")
+                        gr.Markdown("## LLM 模型设置")
+                        # LLM聊天模型设置
+                        with gr.Group():
+                            gr.Markdown("### 聊天模型设置")
+                            llm_provider = gr.Radio(
+                                choices=["OpenAI", "Gemini"],
+                                label="选择模型提供商",
+                                value="OpenAI"
+                            )
+                            
+                            # OpenAI模型选项
+                            openai_models = gr.Dropdown(
+                                choices=["gpt-4o-mini", "gpt-4o"],
+                                label="OpenAI模型",
+                                value="gpt-4o-mini",
+                                visible=True
+                            )
+                            
+                            # Gemini模型选项
+                            gemini_models = gr.Dropdown(
+                                choices=[
+                                    "gemini-1.5-flash-latest",
+                                    "gemini-2.0-pro-exp-02-05",
+                                    "gemini-2.0-flash-thinking-exp-1219"
+                                ],
+                                label="Gemini模型",
+                                value="gemini-1.5-flash-latest",
+                                visible=False
+                            )
+                        
+                        # 思考模型设置
+                        with gr.Group():
+                            gr.Markdown("### 思考模型设置")
+                            thinking_model = gr.Dropdown(
+                                choices=["deepseek-r1:1.5b", "deepseek-r1:8b"],
+                                label="思考模型",
+                                value="deepseek-r1:1.5b"
+                            )
+                        
+                        # 保存LLM设置的按钮
+                        llm_save_btn = gr.Button("更新LLM模型", variant="primary")
+                        llm_status_output = gr.Textbox(label="LLM设置状态", interactive=False)
+                        
+                        # 添加模型切换事件处理
+                        # 在 EmotionalChatApp 类中的设置页面部分
+                        def update_model_visibility(provider):
+                            """更新模型选择器的可见性"""
+                            if provider == "OpenAI":
+                                return {
+                                    openai_models: gr.update(visible=True),
+                                    gemini_models: gr.update(visible=False)
+                                }
+                            else:  # provider == "Gemini"
+                                return {
+                                    openai_models: gr.update(visible=False),
+                                    gemini_models: gr.update(visible=True)
+                                }
+                        
+                        # 保存LLM设置
+                        def save_llm_settings(provider, openai_model, gemini_model, thinking_model):
+                            """保存 LLM 设置"""
+                            try:
+                                # 根据当前选择的提供商确定使用哪个模型名称
+                                selected_model = openai_model if provider == "OpenAI" else gemini_model
+                                self.llm.update_config(provider, selected_model, thinking_model)
+                                return f"成功更新为 {provider} 的 {selected_model} 模型"
+                            except Exception as e:
+                                return f"更新LLM设置失败：{str(e)}"
+                        
+                        # 绑定事件
+                        llm_provider.change(
+                            update_model_visibility,
+                            inputs=[llm_provider],
+                            outputs=[openai_models, gemini_models]
+                        )
+                        
+                        llm_save_btn.click(
+                            save_llm_settings,
+                            inputs=[llm_provider, openai_models, gemini_models, thinking_model],
+                            outputs=[llm_status_output]
+                        )
                         
                         gr.Markdown("## TTS 模型设置")
                         # 获取可用的TTS模型列表

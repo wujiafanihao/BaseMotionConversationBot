@@ -1,15 +1,15 @@
-selected_adapter: openai  # 修改为 'openai' 则启用 openai 模型配置
-
-openai:
-  api_key: "sk-nsgaITlzpL32xiKcYLq1UY9SXUTzwMgAfxob0REwdCAzv9lY"
-  base_url: "https://api.chatanywhere.tech"
-  model: "gpt-4o-mini"
-
-gemini:
-  model: "gemini-1.5-flash"
-  base_url: "https://gemini.wujiafa.us.kg/v1"
-  api_key: "AIzaSyAsmG9yGsqS08hUmpGoGzM2AH-gmdk05p8"
-
 deepseek:
-  model: "deepseek-r1:1.5b"
-  base_url: "http://127.0.0.1:11434"
+  model: deepseek-r1:1.5b
+gemini:
+  api_key: AIzaSyAsmG9yGsqS08hUmpGoGzM2AH-gmdk05p8
+  base_url: https://gemini.wujiafa.us.kg/v1
+  model: gemini-2.0-flash-thinking-exp-1219
+openai:
+  api_key: sk-nsgaITlzpL32xiKcYLq1UY9SXUTzwMgAfxob0REwdCAzv9lY
+  base_url: https://api.chatanywhere.tech
+  model: gpt-4o-mini
+reasoner:
+  deepseek:
+    base_url: http://127.0.0.1:11434
+    model: deepseek-r1:1.5b
+selected_adapter: gemini

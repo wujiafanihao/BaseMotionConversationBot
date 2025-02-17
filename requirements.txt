@@ -29,4 +29,4 @@ ormsgpack==1.7.0
 pyrootutils==1.0.4
 kui==1.8.1
 sounddevice==0.5.1
-gradio==5.4.0
+gradio==3.50.2
