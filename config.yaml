@@ -11,5 +11,5 @@ gemini:
   api_key: "AIzaSyAsmG9yGsqS08hUmpGoGzM2AH-gmdk05p8"
 
 deepseek:
-  model: "deepseek-r1:8b"
+  model: "deepseek-r1:1.5b"
   base_url: "http://127.0.0.1:11434"

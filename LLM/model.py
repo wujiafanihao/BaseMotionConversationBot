@@ -4,7 +4,7 @@ import yaml
 from langchain_openai import ChatOpenAI
 from langchain_ollama.chat_models import ChatOllama
 from langchain_community.embeddings import OllamaEmbeddings
-from memory_manager import debug_print, EnhancedMemoryManager
+from .memory_manager import debug_print, EnhancedMemoryManager
 import asyncio
 
 # 定义 LLMInterface 接口
@@ -26,20 +26,25 @@ class ModelAdapter(LLMInterface):
     【对话上下文（最近优先）】:
     {chat_history}
     （请注意：历史记录中，assistant代表你之前给出的回答，而user代表用户提出的问题。）
+    
     【用户信息】:
     情绪: {emotion}
     提问: {query}
+    
     【辅助思考】:
     ----- 链式思考开始 -----
     {thought_process}
     ----- 链式思考结束 -----
+    
     【最终任务】:
     请基于上述历史记录、用户当前输入和辅助思考的结果，生成一段简洁且富有同理心的回答。请注意：
     1. 不直接引用辅助思考内容；
-    2. 如果用户情绪低落，请给予适当的安慰与鼓励；
-    3. 回答内容应充分考虑历史对话中的角色信息，紧密回应用户当前的问题；
-    4. 保持回复内容精炼，不废话；
-    5. 回复的表达应温暖、细腻，带有充足的情感润色，体现关怀与同理心，避免生硬机械。
+    2. 根据语境和情感自然，使对话更生动；
+    3. 如果用户情绪低落，请给予适当的安慰与鼓励；
+    4. 回答内容应充分考虑历史对话中的角色信息，紧密回应用户当前的问题；
+    5. 保持回复内容精炼，不废话；
+    6. 回复的表达应温暖、细腻，带有充足的情感润色，体现关怀与同理心，避免生硬机械；
+
     """
 
     def __init__(self, base_url: str = None, api_key: str = None):
@@ -61,12 +66,36 @@ class ModelAdapter(LLMInterface):
             raise RuntimeError(f"初始化失败: {str(e)}") # 初始化失败
 
     def __del__(self):
+        """析构函数，确保资源被正确释放"""
         try:
             if hasattr(self, 'client'):
                 self.client.close()
-                debug_print("资源清理", "已关闭数据库连接")
+            if hasattr(self, 'model_instance'):
+                del self.model_instance
+            if hasattr(self, 'embedder'):
+                del self.embedder
+            if hasattr(self, 'memory'):
+                del self.memory
+            if hasattr(self, 'reasoner'):
+                del self.reasoner
+            debug_print("资源清理", "已释放所有资源")
         except Exception as e:
             print(f"清理资源时出错: {str(e)}")
+
+    def release_resources(self):
+        """主动释放资源的方法"""
+        try:
+            if hasattr(self, 'model_instance'):
+                del self.model_instance
+            if hasattr(self, 'embedder'):
+                del self.embedder
+            if hasattr(self, 'memory'):
+                del self.memory
+            if hasattr(self, 'reasoner'):
+                del self.reasoner
+            debug_print("资源释放", "已主动释放模型资源")
+        except Exception as e:
+            print(f"释放资源时出错: {str(e)}")
 
     @staticmethod
     def load_config(config_file="config.yaml", model_key=None):
@@ -102,11 +131,11 @@ class ModelAdapter(LLMInterface):
             
             # 构建包含记忆的上下文
             chat_history = "\n".join(
-                    [f"{m['metadata']['role']}: {m['content']}" 
-                    for m in related_memories]
+                [f"{m['metadata']['role']}: {m['content']}" 
+                for m in related_memories]
             )
 
-            # 获取已有 ReasonerAdapter 的思考过程（避免重复初始化，加快响应速度）
+            # 获取已有 ReasonerAdapter 的思考过程
             think = self.reasoner.generate(message, emotion)
 
             # 使用 format 方法生成最终的提示
@@ -119,7 +148,7 @@ class ModelAdapter(LLMInterface):
 
             debug_print("完整提示词", prompt)
 
-            # 调用实际的 OpenAI 模型
+            # 调用实际的模型
             try:
                 response = self.model_instance.invoke(prompt).content
             except Exception as e:
@@ -128,11 +157,12 @@ class ModelAdapter(LLMInterface):
             # 在生成回复后，统一存储用户输入和AI回复
             self.memory.store_memory("user", message, {"emotion": emotion})
             self.memory.store_memory("assistant", response)
-            return response
+            
+            return response, think
         except Exception as e:
-                print(f"生成失败: {str(e)}")
-                return "抱歉，我遇到了一些问题，请稍后再试。"
-        
+            print(f"生成失败: {str(e)}")
+            return "抱歉，我遇到了一些问题，请稍后再试。", "思考过程出错"
+
     async def agenerate(self, message: str, emotion: str) -> str:
         """异步生成回复的方法，支持流式传输并实时打印输出，最终返回完整响应。"""
         # 构建包含记忆的上下文
@@ -174,15 +204,22 @@ class ReasonerAdapter(LLMInterface):
     【历史对话记录】:
     {chat_history}
     （请注意：在历史记录中，assistant代表你之前的发言，而user代表用户的输入。）
+    
     【当前输入】:
     情绪: {emotion}
     提问: {query}
+    
     【生成任务】:
     请基于以上历史记录和当前输入，生成一段详细的链式思考。该链式思考应：
     1. 分析对话历史中的信息，明确区分assistant和user的发言；
     2. 提炼出用户的核心需求、情绪变化及可能的目的；
     3. 为后续生成符合用户情绪和需求的回复提供指导思路；
-    4. 此链式思考仅供内部使用，不直接展示给用户。
+
+    【思考格式】:
+    示例思考格式：
+    1. 分析用户情绪：用户当前表现出{emotion}的情绪
+    2. 历史对话分析：...
+    3. 核心需求提炼：...
     """
 
     def __init__(self):
@@ -261,24 +298,24 @@ class ReasonerAdapter(LLMInterface):
             raise RuntimeError(f"Model invocation failed: {e}")
         return think_content
 
-async def main():
-    model = ModelAdapter()
-    response = await model.agenerate("你好", "高兴")
-    print("AI：", response)
-    response = await model.agenerate("我刚刚问了什么", "高兴")
-    print("AI：", response)
+# async def main():
+#     model = ModelAdapter()
+#     response = await model.agenerate("你好", "高兴")
+#     print("AI：", response)
+#     response = await model.agenerate("我刚刚问了什么", "高兴")
+#     print("AI：", response)
 
-if __name__ == "__main__":
-    try:
-        model = ModelAdapter()
-        reasoner_model = ReasonerAdapter()
-        while True:
-            # 用户提问
-            user_message = input("你：")
-            user_emotion = input("你当前情绪：")
-            # 基于 ReasonerAdapter 的思考过程生成最终回复
-            response = model.generate(user_message, user_emotion)
-            print("AI：", response)
-        # asyncio.run(main())
-    except Exception as e:
-        print(f"Error: {e}")
+# if __name__ == "__main__":
+#     try:
+#         model = ModelAdapter()
+#         reasoner_model = ReasonerAdapter()
+#         while True:
+#             # 用户提问
+#             user_message = input("你：")
+#             user_emotion = input("你当前情绪：")
+#             # 基于 ReasonerAdapter 的思考过程生成最终回复
+#             response = model.generate(user_message, user_emotion)
+#             print("AI：", response)
+#         # asyncio.run(main())
+#     except Exception as e:
+#         print(f"Error: {e}")
